@@ -1,21 +1,4 @@
 // =========================
-//  CONFIG
-// =========================
-const response = await fetch("https://nutrisnap1.nicechewbacca.workers.dev", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    contents: [
-      { parts: [{ text: "Hello from app" }] }
-    ]
-  })
-});
-
-const data = await response.json();
-console.log(data);
-
-
-// =========================
 //  IndexedDB
 // =========================
 function getDB() {
@@ -91,7 +74,7 @@ async function getMealsForToday() {
 
 
 // =========================
-//  GEMINI VISION ANALYSIS
+//  GEMINI VIA CLOUDFLARE WORKER
 // =========================
 async function analyzeImage(file, comment) {
   const formData = new FormData();
@@ -113,13 +96,10 @@ async function analyzeImage(file, comment) {
 `
   );
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      body: formData
-    }
-  );
+  const response = await fetch("https://nutrisnap1.nicechewbacca.workers.dev", {
+    method: "POST",
+    body: formData
+  });
 
   const data = await response.json();
 
