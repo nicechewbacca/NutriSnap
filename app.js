@@ -1,184 +1,221 @@
-const apiKey = 'sk-8979b33949c74e06be6bd6c37af70487'; // сюда временно можно подставить твой ключ для POC
+// =========================
+//  CONFIG
+// =========================
+const response = await fetch("https://nutrisnap1.nicechewbacca.workers.dev", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    contents: [
+      { parts: [{ text: "Hello from app" }] }
+    ]
+  })
+});
 
-function formatDate(date) {
-  return date.toISOString().slice(0, 10);
+const data = await response.json();
+console.log(data);
+
+
+// =========================
+//  IndexedDB
+// =========================
+function getDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("nutrisnap-db", 1);
+
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+
+      if (!db.objectStoreNames.contains("profile")) {
+        db.createObjectStore("profile", { keyPath: "id" });
+      }
+
+      if (!db.objectStoreNames.contains("meals")) {
+        db.createObjectStore("meals", { keyPath: "id", autoIncrement: true });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
 }
 
-function calcBMR(profile) {
-  const { gender, age, weight, height } = profile;
-  if (gender === 'male') {
-    return Math.round(10 * weight + 6.25 * height - 5 * age + 5);
-  } else {
-    return Math.round(10 * weight + 6.25 * height - 5 * age - 161);
-  }
+
+// =========================
+//  PROFILE
+// =========================
+async function saveProfile(profile) {
+  const db = await getDB();
+  const tx = db.transaction("profile", "readwrite");
+  tx.objectStore("profile").put({ ...profile, id: 1 });
+  return tx.complete;
 }
 
+async function getProfile() {
+  const db = await getDB();
+  const tx = db.transaction("profile", "readonly");
+  return tx.objectStore("profile").get(1);
+}
+
+
+// =========================
+//  MEALS
+// =========================
+async function saveMeal(meal) {
+  const db = await getDB();
+  const tx = db.transaction("meals", "readwrite");
+  tx.objectStore("meals").add(meal);
+  return tx.complete;
+}
+
+async function getMealsForToday() {
+  const db = await getDB();
+  const tx = db.transaction("meals", "readonly");
+  const store = tx.objectStore("meals");
+
+  return new Promise((resolve) => {
+    const result = [];
+    const today = new Date().toISOString().split("T")[0];
+
+    store.openCursor().onsuccess = (event) => {
+      const cursor = event.target.result;
+      if (cursor) {
+        const mealDate = new Date(cursor.value.date).toISOString().split("T")[0];
+        if (mealDate === today) result.push(cursor.value);
+        cursor.continue();
+      } else {
+        resolve(result);
+      }
+    };
+  });
+}
+
+
+// =========================
+//  GEMINI VISION ANALYSIS
+// =========================
 async function analyzeImage(file, comment) {
   const formData = new FormData();
-  formData.append('image', file);
-  formData.append('prompt', `Описание пользователя: ${comment || ''}. Определи калории, белки, жиры, углеводы и вес порции.`);
 
-  // пример: заменить URL на реальный эндпоинт AI
-  const response = await fetch('https://api.deepseek.com', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: formData
-  });
-
-  if (!response.ok) {
-    throw new Error('AI error');
-  }
-
-  const data = await response.json();
-  return {
-    calories: data.calories,
-    protein: data.protein,
-    fat: data.fat,
-    carbs: data.carbs,
-    weight: data.weight
-  };
+  formData.append("image", file);
+  formData.append(
+    "prompt",
+    `
+Проанализируй еду на фото и верни строго JSON:
+{
+  "calories": число,
+  "protein": число,
+  "fat": число,
+  "carbs": число,
+  "weight": число
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
-  const genderEl = document.getElementById('gender');
-  const ageEl = document.getElementById('age');
-  const weightEl = document.getElementById('weight');
-  const heightEl = document.getElementById('height');
-  const goalTypeEl = document.getElementById('goalType');
-  const deficitEl = document.getElementById('deficit');
-  const bmrInfoEl = document.getElementById('bmrInfo');
+Комментарий пользователя: ${comment}
+`
+  );
 
-  const mealPhotoEl = document.getElementById('mealPhoto');
-  const mealCommentEl = document.getElementById('mealComment');
-  const analyzeBtn = document.getElementById('analyzeBtn');
-  const analyzeStatusEl = document.getElementById('analyzeStatus');
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      body: formData
+    }
+  );
 
-  const aiResultEl = document.getElementById('aiResult');
-  const caloriesInput = document.getElementById('caloriesInput');
-  const proteinInput = document.getElementById('proteinInput');
-  const fatInput = document.getElementById('fatInput');
-  const carbsInput = document.getElementById('carbsInput');
-  const weightInput = document.getElementById('weightInput');
-  const saveMealBtn = document.getElementById('saveMealBtn');
+  const data = await response.json();
 
-  const dayDateEl = document.getElementById('dayDate');
-  const dayBmrEl = document.getElementById('dayBmr');
-  const dayCaloriesEl = document.getElementById('dayCalories');
-  const dayDiffEl = document.getElementById('dayDiff');
-  const mealsListEl = document.getElementById('mealsList');
+  try {
+    const text = data.candidates[0].content[0].text;
+    return JSON.parse(text);
+  } catch (e) {
+    console.error("Ошибка парсинга ответа Gemini:", e, data);
+    throw new Error("Gemini вернул неожиданный формат ответа");
+  }
+}
 
-  const saveProfileBtn = document.getElementById('saveProfileBtn');
 
-  // загрузка профиля
-  const existingProfile = await getProfile();
-  let currentProfile = existingProfile || null;
+// =========================
+//  UI LOGIC
+// =========================
 
-  if (currentProfile) {
-    genderEl.value = currentProfile.gender;
-    ageEl.value = currentProfile.age;
-    weightEl.value = currentProfile.weight;
-    heightEl.value = currentProfile.height;
-    goalTypeEl.value = currentProfile.goalType;
-    deficitEl.value = currentProfile.calorieDeficit;
-    const bmr = calcBMR(currentProfile);
-    bmrInfoEl.textContent = `BMR: ${bmr} ккал/день`;
-  } else {
-    bmrInfoEl.textContent = 'Заполните профиль для расчёта BMR';
+// Загружаем профиль при старте
+document.addEventListener("DOMContentLoaded", async () => {
+  const profile = await getProfile();
+
+  if (profile) {
+    document.getElementById("name").value = profile.name || "";
+    document.getElementById("age").value = profile.age || "";
+    document.getElementById("weight").value = profile.weight || "";
+    document.getElementById("height").value = profile.height || "";
+    document.getElementById("gender").value = profile.gender || "male";
   }
 
-  saveProfileBtn.addEventListener('click', async () => {
-    const profile = {
-      gender: genderEl.value,
-      age: Number(ageEl.value),
-      weight: Number(weightEl.value),
-      height: Number(heightEl.value),
-      goalType: goalTypeEl.value,
-      calorieDeficit: Number(deficitEl.value)
-    };
-    const bmr = calcBMR(profile);
-    profile.bmr = bmr;
-    profile.updatedAt = new Date().toISOString();
-    await saveProfile(profile);
-    currentProfile = profile;
-    bmrInfoEl.textContent = `BMR: ${bmr} ккал/день`;
-    await refreshDaySummary();
-  });
-
-  analyzeBtn.addEventListener('click', async () => {
-    const file = mealPhotoEl.files[0];
-    if (!file) {
-      analyzeStatusEl.textContent = 'Выберите фото';
-      return;
-    }
-    analyzeStatusEl.textContent = 'Анализируем...';
-    aiResultEl.classList.add('hidden');
-    try {
-      const result = await analyzeImage(file, mealCommentEl.value);
-      caloriesInput.value = result.calories;
-      proteinInput.value = result.protein;
-      fatInput.value = result.fat;
-      carbsInput.value = result.carbs;
-      weightInput.value = result.weight;
-      aiResultEl.classList.remove('hidden');
-      analyzeStatusEl.textContent = 'Готово, проверьте и сохраните';
-    } catch (e) {
-      analyzeStatusEl.textContent = 'Ошибка анализа. Попробуйте ещё раз или введите вручную.';
-      aiResultEl.classList.remove('hidden');
-    }
-  });
-
-  saveMealBtn.addEventListener('click', async () => {
-    const now = new Date();
-    const meal = {
-      date: formatDate(now),
-      time: now.toISOString().slice(11, 16),
-      calories: Number(caloriesInput.value),
-      protein: Number(proteinInput.value),
-      fat: Number(fatInput.value),
-      carbs: Number(carbsInput.value),
-      weight: Number(weightInput.value),
-      comment: mealCommentEl.value || '',
-      manualEdited: true,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString()
-    };
-    await addMeal(meal);
-    analyzeStatusEl.textContent = 'Запись сохранена';
-    aiResultEl.classList.add('hidden');
-    mealPhotoEl.value = '';
-    mealCommentEl.value = '';
-    await refreshDaySummary();
-  });
-
-  async function refreshDaySummary() {
-    const today = new Date();
-    const dateStr = formatDate(today);
-    dayDateEl.textContent = `Дата: ${dateStr}`;
-
-    const meals = await getMealsByDate(dateStr);
-    mealsListEl.innerHTML = '';
-    let totalCalories = 0;
-    meals.forEach(m => {
-      totalCalories += m.calories;
-      const li = document.createElement('li');
-      li.textContent = `${m.time} — ${m.calories} ккал (${m.comment || 'без комментария'})`;
-      mealsListEl.appendChild(li);
-    });
-
-    if (currentProfile) {
-      const bmr = currentProfile.bmr || calcBMR(currentProfile);
-      dayBmrEl.textContent = `BMR: ${bmr} ккал`;
-      dayCaloriesEl.textContent = `Потреблено: ${totalCalories} ккал`;
-      const diff = bmr + (currentProfile.calorieDeficit || 0) - totalCalories;
-      dayDiffEl.textContent = `Остаток до цели: ${diff} ккал`;
-    } else {
-      dayBmrEl.textContent = 'BMR: профиль не заполнен';
-      dayCaloriesEl.textContent = `Потреблено: ${totalCalories} ккал`;
-      dayDiffEl.textContent = '';
-    }
-  }
-
-  await refreshDaySummary();
+  updateDailyStats();
 });
+
+
+// Сохранение профиля
+document.getElementById("saveProfile").addEventListener("click", async () => {
+  const profile = {
+    name: document.getElementById("name").value,
+    age: Number(document.getElementById("age").value),
+    weight: Number(document.getElementById("weight").value),
+    height: Number(document.getElementById("height").value),
+    gender: document.getElementById("gender").value
+  };
+
+  await saveProfile(profile);
+  alert("Профиль сохранён");
+});
+
+
+// Добавление записи с фото
+document.getElementById("addMeal").addEventListener("click", async () => {
+  const fileInput = document.getElementById("mealPhoto");
+  const comment = document.getElementById("mealComment").value;
+
+  if (!fileInput.files.length) {
+    alert("Выберите фото");
+    return;
+  }
+
+  const file = fileInput.files[0];
+
+  try {
+    const analysis = await analyzeImage(file, comment);
+
+    const meal = {
+      ...analysis,
+      comment,
+      date: new Date().toISOString()
+    };
+
+    await saveMeal(meal);
+    updateDailyStats();
+
+    alert("Запись добавлена");
+  } catch (e) {
+    alert("Ошибка анализа изображения");
+    console.error(e);
+  }
+});
+
+
+// Обновление дневной статистики
+async function updateDailyStats() {
+  const meals = await getMealsForToday();
+
+  const total = meals.reduce(
+    (acc, m) => ({
+      calories: acc.calories + (m.calories || 0),
+      protein: acc.protein + (m.protein || 0),
+      fat: acc.fat + (m.fat || 0),
+      carbs: acc.carbs + (m.carbs || 0)
+    }),
+    { calories: 0, protein: 0, fat: 0, carbs: 0 }
+  );
+
+  document.getElementById("dailyCalories").textContent = total.calories;
+  document.getElementById("dailyProtein").textContent = total.protein;
+  document.getElementById("dailyFat").textContent = total.fat;
+  document.getElementById("dailyCarbs").textContent = total.carbs;
+}
