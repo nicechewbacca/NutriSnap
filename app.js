@@ -136,7 +136,7 @@ function getTodayStr() {
 //  GEMINI VIA CLOUDFLARE WORKER
 // =========================
 
-const WORKER_URL = "https://nutrisnap1.nicechewbacca.workers.dev";
+const WORKER_URL = "https://nutrisnap1.nicechewbacca.workers.dev/";
 
 async function analyzeImage(file, comment) {
   const formData = new FormData();
