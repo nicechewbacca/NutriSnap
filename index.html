@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>NutriSnap PWA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>NutriSnap</h1>
+    <p>Дневной трекер питания (PWA)</p>
+  </header>
+
+  <main>
+    <!-- Профиль -->
+    <section id="profile-section">
+      <h2>Профиль</h2>
+      <label>Пол:
+        <select id="gender">
+          <option value="male">Муж</option>
+          <option value="female">Жен</option>
+        </select>
+      </label>
+      <label>Возраст:
+        <input type="number" id="age" min="10" max="100" />
+      </label>
+      <label>Вес (кг):
+        <input type="number" id="weight" step="0.1" />
+      </label>
+      <label>Рост (см):
+        <input type="number" id="height" />
+      </label>
+      <label>Цель:
+        <select id="goalType">
+          <option value="loss">Похудение</option>
+          <option value="maintain">Поддержание</option>
+          <option value="gain">Набор</option>
+        </select>
+      </label>
+      <label>Дефицит (ккал):
+        <input type="number" id="deficit" value="-300" />
+      </label>
+      <button id="saveProfileBtn">Сохранить профиль</button>
+      <p id="bmrInfo"></p>
+    </section>
+
+    <hr />
+
+    <!-- Добавление записи -->
+    <section id="add-meal-section">
+      <h2>Новый приём пищи</h2>
+      <label>Фото:
+        <input type="file" id="mealPhoto" accept="image/*" capture="environment" />
+      </label>
+      <label>Комментарий:
+        <input type="text" id="mealComment" placeholder="овсянка на воде с бананом" />
+      </label>
+      <button id="analyzeBtn">Анализировать фото</button>
+      <p id="analyzeStatus"></p>
+
+      <div id="aiResult" class="hidden">
+        <h3>Результат анализа</h3>
+        <label>Ккал:
+          <input type="number" id="caloriesInput" />
+        </label>
+        <label>Белки (г):
+          <input type="number" id="proteinInput" step="0.1" />
+        </label>
+        <label>Жиры (г):
+          <input type="number" id="fatInput" step="0.1" />
+        </label>
+        <label>Углеводы (г):
+          <input type="number" id="carbsInput" step="0.1" />
+        </label>
+        <label>Вес порции (г):
+          <input type="number" id="weightInput" step="1" />
+        </label>
+        <button id="saveMealBtn">Сохранить запись</button>
+      </div>
+    </section>
+
+    <hr />
+
+    <!-- Дневная статистика -->
+    <section id="day-summary-section">
+      <h2>Сегодня</h2>
+      <p id="dayDate"></p>
+      <p id="dayBmr"></p>
+      <p id="dayCalories"></p>
+      <p id="dayDiff"></p>
+
+      <h3>Записи за день</h3>
+      <ul id="mealsList"></ul>
+    </section>
+  </main>
+
+  <script src="db.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
+    }
+  </script>
+</body>
+</html>
