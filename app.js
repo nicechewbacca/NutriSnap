@@ -19,7 +19,7 @@ async function analyzeImage(file, comment) {
   formData.append('prompt', `Описание пользователя: ${comment || ''}. Определи калории, белки, жиры, углеводы и вес порции.`);
 
   // пример: заменить URL на реальный эндпоинт AI
-  const response = await fetch('https://your-ai-endpoint.example.com/analyze', {
+  const response = await fetch('https://api.deepseek.com', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`
